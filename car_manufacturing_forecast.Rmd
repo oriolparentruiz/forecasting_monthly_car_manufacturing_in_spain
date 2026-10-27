@@ -1,0 +1,1071 @@
+---
+title: ""
+author: ""
+date: ""
+output: 
+  pdf_document:
+    toc: false          
+    toc_depth: 2         
+    number_sections: true  
+    latex_engine: xelatex  
+    extra_dependencies: ["ragged2e"]
+  fontsize: 12pt
+  geometry: margin=1in
+params:
+  report: true
+---
+
+```{=tex}
+\begin{titlepage}
+\centering
+\vspace*{4cm}
+
+{\Huge \textbf{Forecasting Monthly Car Manufacturing in Spain}}\\[1.5cm]
+
+{\Large Lucas Viner and Oriol Parent\\
+GCED\\
+AD\\
+Academic Year 2024–2025\\}
+
+\vfill
+\end{titlepage}
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(   
+  echo = !params$report, # Mostrar código solo si report = FALSE
+
+message = !params$report, # Mostrar mensajes solo si report = FALSE
+
+warning = !params$report, # Mostrar warnings solo si report = FALSE
+
+fig.show = if (params$report) "hide" else "asis" # Ocultar gráficos en el report
+)
+```
+
+
+\newpage
+
+\justifying
+
+\thispagestyle{empty}
+
+\newpage
+
+\tableofcontents
+
+\newpage
+
+# Introduction
+
+Forecasting plays a pivotal role in economic planning and industrial management, particularly in sectors with high capital investment and logistical complexity, such as automotive manufacturing. The objective of this report is to develop a forecasting model for the monthly production of passenger cars in Spain, applying the Box-Jenkins methodology using ARIMA models. This statistical framework offers a rigorous and widely accepted approach for analyzing time-dependent data, particularly when the objective is to understand underlying structures and produce reliable short- to medium-term forecasts.
+
+This project is conducted within the scope of the Time Series Analysis course, and it aims to deepen both the theoretical understanding and practical implementation of ARIMA models. Beyond model fitting, special emphasis is placed on the diagnostic evaluation of residuals, the assessment of forecasting accuracy, and the integration of outlier detection techniques. The latter is crucial when working with real-world economic data, which often contains irregularities due to policy shifts, economic shocks, or extraordinary events such as pandemics or industrial strikes.
+
+The final objective is not merely to identify a statistical model that fits the historical data well, but to construct a model that is robust, interpretable, and capable of generalizing to future periods with reasonable confidence. This aligns with the broader goals of time series modeling in applied research and policy contexts, where accuracy and interpretability must coexist.
+
+# Basic description of the dataset
+
+The dataset under analysis in this report is referred to as TURISMOS, and it captures the monthly number of passenger cars manufactured in Spain, recorded in thousands of units. The source of the data is the Ministry of Industry, Energy, and Tourism of Spain (Ministerio de Industria, Energía y Turismo), specifically extracted from the statistical series titled Estadística de Fabricación de Vehículos.
+
+Each observation in the series corresponds to the number of cars produced in a specific month, and the dataset is structured as a single-variable time series with a fixed monthly frequency. This structure lends itself well to ARIMA modeling, particularly because the method assumes equally spaced time intervals and is designed to capture autocorrelations and seasonality. 
+
+The preliminary exploration of the series reveals notable variation in production volume over time, likely reflecting both seasonal effects (for example, plant shutdowns in August or increased production before year-end sales periods) and structural shifts (the 2008 financial crisis). Understanding and accounting for these patterns is essential to producing reliable forecasts and drawing meaningful conclusions from the analysis.
+
+In summary, the TURISMOS dataset offers an ideal foundation for applying time series modeling techniques, both due to its economic relevance and its statistical properties.\
+
+# Summary of the methodology used for data analysis
+
+The methodology employed in this project follows the classical Box-Jenkins framework for time series modeling, enhanced by modern techniques for outlier detection and model validation. This structured approach is particularly well-suited for univariate time series data with temporal dependencies and seasonal fluctuations, as is the case with the monthly car production data analyzed in this study.
+
+The analysis begins with data visualization and preprocessing, where the time series is plotted to identify any apparent trends, seasonality, or structural breaks. Basic descriptive statistics are computed, and potential data issues such as missing values or sudden shifts are investigated. Since the raw time series typically exhibits non-stationary behavior—a prerequisite violation for ARIMA modeling—transformations such as logarithmic scaling or differencing are applied to stabilize the mean and variance of the series.
+
+Once the series is transformed into a stationary form, the identification phase involves analyzing the autocorrelation function (ACF) and partial autocorrelation function (PACF) plots. These graphical tools help suggest candidate ARIMA models by revealing the underlying autoregressive (AR) and moving average (MA) structures. At least two plausible models are proposed based on the observed decay patterns in the ACF and PACF, and their theoretical implications.
+
+The estimation phase is carried out using the R statistical software, where the selected ARIMA models are fitted to the training portion of the dataset. Maximum likelihood estimation is used to estimate the model parameters, and the performance of each model is evaluated based on goodness-of-fit metrics such as the Akaike Information Criterion (AIC) and the Bayesian Information Criterion (BIC).
+
+Next, the validation phase involves a thorough diagnostic check of the residuals. Residuals should behave as white noise—uncorrelated, homoscedastic, and normally distributed. To confirm this, we examine standardized residual plots, the ACF of residuals, and conduct formal tests such as the Ljung-Box test. Additionally, the stability of the models is verified by ensuring that the estimated coefficients satisfy stationarity and invertibility conditions. For out-of-sample validation, the final 12 observations are withheld from model fitting and used to evaluate the forecasting accuracy of each model.
+
+An important extension in this analysis is the incorporation of automatic outlier detection, which identifies and adjusts for atypical observations that could distort model estimation and prediction. Using established algorithms available in R, the time series is scanned for additive, level shift, and temporary change outliers. Detected anomalies are interpreted in light of known historical events when possible, and a new ARIMA model is refitted to the adjusted series.
+
+Finally, the selected model is used to generate 12-month ahead forecasts, including confidence intervals to account for prediction uncertainty. A comparison is made between forecasts obtained from the original and outlier-adjusted series to assess the impact of anomalies on forecast quality.
+
+Overall, this methodology ensures that the final model is not only statistically sound but also robust to real-world irregularities, providing a credible tool for understanding and anticipating trends in the Spanish car manufacturing sector.
+
+\newpage
+
+# Results and interpretation
+
+Let's now begin with the results and interpretation.
+
+## Identification
+
+### Determine the transformations needed to make the series stationary.
+
+We start reading our original time serie and we plot it.
+
+```{r}
+serie=ts(read.table("turismos.dat")/1000,start=1994,freq=12)
+```
+
+```{r}
+plot(serie,main= "Thousands of cars manufactured in Spain",ylim=c(0,300))
+abline(v=1990:2019,col=4,lty=3)
+```
+
+The plot shows the **monthly production of passenger cars in Spain** from January 1994 onward. A few key observations from the raw series:
+
+-   **Strong seasonality**: There's a recurring dip, likely due to seasonal shutdowns (August holidays).
+
+-   **Volatility**: Some periods exhibit higher variance.
+
+-   **Non-stationarity**: The mean level appears to fluctuate over time — this will need to be addressed before fitting ARIMA models.
+
+In order to assess whether the variance of the series was stable over time, we will generate a year-wise boxplot.
+
+```{r}
+a = floor(time(serie)) 
+boxplot(serie ~ a)
+```
+
+This graphical representation grouped the data by year and highlighted the distributional spread of monthly values within each period. The resulting plot clearly showed substantial differences in the heights of the boxes and the interquartile ranges across different years, indicating that the variance is **not constant** over time. On top of that, we can clearly observe the presence of outliers.
+
+The violation of the constant variance assumption (heteroskedasticity) implies that a transformation is required before model identification can proceed. In this context, a **variance-stabilizing transformation**, such as the **logarithmic transformation**, is commonly applied. This transformation compresses higher values more than lower ones, helping to normalize the variance and making the series more amenable to ARIMA modeling.
+
+```{r}
+lnserie = log(serie)
+plot(lnserie)
+```
+
+The plot of lnserie reveals that, although the variance appears more controlled, the **mean level is not constant** throughout the observation period. There are noticeable trends and long-term fluctuations, indicating **non-stationarity in the mean**. This violates one of the key assumptions of ARIMA modeling: that the underlying data-generating process has constant statistical properties over time.
+
+Given this observation, it becomes necessary to apply a **regular (non-seasonal) first-order difference** to the log-transformed series. This operation removes the linear trend and stabilizes the mean of the series, allowing for clearer identification of autoregressive and moving average components.
+
+```{r}
+d1lnserie = diff(lnserie)
+plot(d1lnserie)
+```
+
+Now, let's move on to studying the seasonality of our time series.
+
+To further investigate the seasonality of the transformed series, a seasonal decomposition was visually inspected. This plot illustrates the average seasonal pattern of the time series across the twelve months of the year, providing valuable insight into recurring intra-annual behavior.
+
+```{r}
+monthplot(d1lnserie)
+```
+
+The monthly plot reveals a relatively consistent mean level throughout the year, suggesting that the overall trend component may be stable. However, there are **notable deviations**, particularly in **August and Setember**, where production sharply declines. This drop likely reflects planned factory shutdowns or reduced industrial activity during the summer holiday period. A smaller but consistent dip is also observed in **December**, possibly associated with year-end slowdowns or reduced operating schedules.
+
+Despite the seemingly stable trend, these pronounced and recurring seasonal effects indicate that the series is **not stationary in its seasonal component**.
+
+Consequently, the series requires **seasonal differencing** to remove this deterministic seasonal component and achieve stationarity. This step is essential for isolating the stochastic structure of the time series, allowing for reliable model identification and parameter estimation in the next phases of the Box-Jenkins methodology.
+
+```{r}
+d1d12lnserie = diff(d1lnserie, 12)
+monthplot(d1d12lnserie)
+```
+
+If we apply the monthplot to the new series, we can now see how we have gotten rid of the seasonal component.
+
+After ensuring that the series is visually stationary in both the mean and seasonal components through differencing, the next step consists of quantitatively validating the effectiveness of the transformations. To achieve this, a **variance comparison** is performed among the different transformed versions of the series.
+
+Specifically, the variances of the following series are computed:
+
+-   `var(lnserie)`: the log-transformed series without differencing,
+
+-   `var(d1d12lnserie)`: the series after applying both a regular and a seasonal difference,
+
+-   `var(diff(d1d12lnserie))`: the series after an additional regular differencing step.
+
+The objective of this comparison is to identify which transformation yields the **lowest variance**, as lower variance typically indicates a more stable and stationary process.
+
+```{r}
+var(lnserie)
+var(d1d12lnserie) 
+var(diff(d1d12lnserie))
+```
+
+The results of the variance calculations clearly show that the series `d1d12lnserie`, obtained after applying one regular and one seasonal difference, achieves the **lowest variance** among the considered transformations. This outcome confirms that the combination of both types of differentiating is necessary and sufficient to render the series stationary in both its mean and seasonal structures.
+
+Consequently, the analysis proceeds using the `d1d12lnserie` series for the identification of candidate ARIMA models through the examination of its autocorrelation and partial autocorrelation functions.
+
+### Analyze the ACF and PACF of the series to identify at least two possible models. Explain the graphical characteristics used to support your selection.
+
+After applying both regular and seasonal differencing, the autocorrelation structure of the transformed series is examined through the **Autocorrelation Function (ACF)** and the **Partial Autocorrelation Function (PACF)** plots.
+
+```{r}
+acf(d1d12lnserie, ylim = c(-1,1), lag.max = 6*12, lwd = 2, col = c(2,rep(1,11)))
+```
+
+```{r}
+pacf(d1d12lnserie, ylim = c(-1,1), lag.max = 6*12, lwd = 2, col = c(rep(1,11),2))
+```
+
+Now, we have observed that the series exhibits a regular dependence (a relationship with the immediately preceding observations), but also a seasonal dependence (to predict the number of cars in August, it makes sense to consider not only July, June, and May of the same year, but also the values recorded in August of previous years).
+
+Therefore, we will proceed to work with an ARIMA model characterized by six parameters: three for the regular dependence and three for the seasonal dependence: ARIMA(p, d, q)(P, D, Q)s.
+
+To propose the components of the seasonal dependence (denoted by uppercase letters), the key will be to examine the ACF/PACF plots, focusing only on the lags that are multiples of the seasonality period (in R, we highlight these lags by marking them in red).
+
+We begin by determining the seasonal components. First, let us examine the ACF plot. As we know, the objective is to identify in which of the two plots (ACF or PACF) a finite number of significant lags appears. The ACF plot displays a very rapid decay after lag 1, with only the first lag being significantly different from zero, and subsequent autocorrelations falling within the confidence bands. This suggests that the autocorrelation structure is short-term and does not persist across longer lags, which is a typical characteristic of a moving average (MA) process of low order**.** The significant spike at lag 1 points toward the presence of an **MA(1) component**.
+
+Similarly, the PACF plot shows a significant spike at lag 1, followed by nonsignificant values for higher lags. This pattern is associated with an autoregressive (AR) process of low order, particularly an **AR(1) model.**
+
+Secondly, we must determine the regular component, which relates the present value to the immediate past. To identify models for the regular part, we will focus exclusively on the first few lags (the first four or five), as lags close to multiples of the seasonality period may act as satellite: that is, non-representative lags.
+
+Let's start by analyzing the ACF plot. We can clearly observe that only one lag falls outside the confidence interval within the region of interest, since the next lag that exceeds the interval is very close to the seasonal lag and is clearly biased by it. Therefore, only one lag is considered significant. Since the finite number of lags is determined based on the ACF, we conclude that the model corresponds to an MA(q) process, where *q* is the last significant lag. In this case, we identify an **MA(1) process.**
+
+If we apply the same method to the PACF plot, we observe that two lags fall outside the confidence interval. Similarly to the ACF case, the subsequent lags that exceed the interval are already very close to the next seasonal lag. Therefore, it is reasonable to propose an **AR(2) model.**
+
+So, we propose the following 4 models:
+
+-   ARIMA(2,1,0)(1,1,0)12
+
+-   ARIMA(0,1,1)(1,1,0)12
+
+-   ARIMA(2,1,0)(0,1,1)12
+
+-   ARIMA(0,1,1)(0,1,1)12
+
+## Estimation
+
+### **Use** R to estimate two of the identified models
+
+After identifying possible model structures based on the ACF and PACF analysis, the next step consists of estimating the parameters of two candidate ARIMA models using the R statistical environment. The selected models are:
+
+-   ARIMA(0,1,1)(1,1,0)12
+
+-   ARIMA(0,1,1)(0,1,1)12
+
+The choice of these models is motivated by a preference for **parsimony**, meaning that models with fewer parameters are prioritized, provided they offer an adequate fit. Parsimonious models are generally preferred because they tend to have better forecasting properties and avoid overfitting. Thus, among the identified possibilities, the two models with the simplest structures were selected for estimation.
+
+Lets start by estimating the first of the two models: **ARIMA(0,1,1)(1,1,0)12.**
+
+The estimation is performed using the `arima` function in R, which employs maximum likelihood estimation to determine the model coefficients. Moreover, it is important to remember that we will first apply the command to the series Wt in order to also obtain the estimation of the mean (the intercept) and assess whether it is statistically significant.
+
+```{r}
+mod1 = arima(d1d12lnserie, order = c(0,0,1), seasonal = list(order = c(1,0,0), period = 12))
+mod1
+```
+
+The first step is to examine the intercept and determine whether it is statistically significant. We will do so by conducting the following hypothesis test
+
+$H_0: \mu = 0$ vs $H_1: \mu \neq 0$ where
+
+$$
+\hat{t} = \frac{\hat{\mu} - 0} {S{\mu}}
+$$
+
+and $S{\mu}$ represents the standard error.
+
+The decision rule will be that if $\|\hat{t}\| > 2 \Rightarrow H_1$.
+
+In this case, we observe that the t-ratio of the intercept value is close to zero. Therefore, we can conclude that the intercept is not significant, and we will use the ARIMA model that also estimates the necessary transformations.
+
+```{r}
+(mod1 = arima(lnserie, order = c(0,1,1), seasonal = list(order = c(1,1,0), period = 12)))
+```
+
+The outputs obtained from these estimations include the estimated coefficients, their standard errors, and information criteria such as the **Akaike Information Criterion (AIC)**, which are key tools for model comparison.
+
+The final expression of the estimated model is:
+
+$$
+(1 + 0.5107 B)(1 - B)(1 - B^{12}) X_t = (1 - 0.6429 B^{12}) Z_t
+$$
+
+We now proceed with the following model: **ARIMA(0,1,1)(0,1,1)12**. As before, we first check whether the intercept is statistically significant. In this way, we will set both differencing parameters (d and D) to 0 and use the series Wt instead.
+
+```{r}
+(mod2 = arima(d1d12lnserie, order = c(0,0,1), seasonal = list(order = c(0,0,1), period = 12)))
+```
+
+Once again, we observe that the ratio between the intercept values is close to zero. Therefore, we can use the ARIMA model that also estimates the necessary transformations.
+
+```{r}
+(mod2 = arima(lnserie, order = c(0,1,1), seasonal = list(order = c(0,1,1), period = 12)))
+```
+
+The final expression of the estimated model is:
+
+$$
+(1 - B)(1 - B^{12}) X_t = (1 - 0.6555 B)(1 - 0.7329 B^{12}) Z_t
+$$
+
+Furthermore, since we have obtained a lower AIC value, we can conclude that this model is an improvement over the previous one.
+
+## Validation
+
+### Perform a complete residual analysis, justifying the assumptions based on the corresponding graphical results.
+
+A crucial step in the modeling process is the analysis of the residuals generated by the fitted models. The residual analysis allows for a verification of the fundamental assumptions underlying ARIMA models, namely:
+
+-   Homoscedasticity: The variance of the residuals should be constant over time. Residuals should not show any pattern of increasing or decreasing dispersion.
+
+-   Normality: The residuals should approximately follow a normal distribution. This assumption is important for the validity of confidence intervals and hypothesis tests associated with the model.
+
+-   Independence: The residuals should not exhibit autocorrelation; they must behave as white noise.
+
+To begin this analysis, the residuals from the first model **ARIMA(0,1,1)(1,1,0)12**​, are extracted using the `resid()` function in R. A time plot of these residuals is generated.
+
+```{r}
+resi1 <- resid(mod1)
+plot(resi1); abline(h=0); abline(h=c(-3*sd(resi1),3*sd(resi1)), lty=3, col=4)
+```
+
+#### Homoscedasticity
+
+To rigorously assess the assumption of homoscedasticity, a more sensitive graphical technique is employed. Specifically, the square root of the absolute value of the residuals is plotted against time using the `scatter.smooth()` function in R, with a locally weighted regression line (LOESS) superimposed.
+
+```{r}
+scatter.smooth(sqrt(abs(resi1)), lpars=list(col=2))
+```
+
+In the resulting plot, the behavior of the red smoothing curve is examined. Ideally, if the variance were constant over time, the smoothed line would be approximately horizontal, indicating that the spread of the residuals does not vary across the observation period.
+
+However, the results indicate that the smoothing line is not perfectly flat. A slight upward trend is observed, particularly at the beginning of the series. This suggests that the variance of the residuals tends to increase slightly over time. Furthermore, the initial time plot of the residuals already showed several points falling outside the ±3 standard deviation bands, further hinting at the presence of outliers and mild heteroscedasticity.
+
+Based on these observations, it is concluded that the assumption of constant variance is **not fully satisfied**. While the deviations are not extreme, the evidence suggests that the residuals exhibit a slight form of heteroscedasticity, which could potentially affect the efficiency of the model’s forecasts and confidence intervals.
+
+#### Normality
+
+To evaluate the assumption of normality of the residuals, both graphical and statistical methods are employed.
+
+First, a **normal Q-Q plot** of the residuals is generated.
+
+```{r}
+qqnorm(resi1); qqline(resi1, col=2, lwd=2)
+```
+
+In the resulting plot, the theoretical quantiles from a normal distribution are compared to the empirical quantiles of the residuals. Ideally, if the residuals followed a normal distribution, the points would align closely along the red reference line. However, it is observed that the residuals deviate considerably from the reference line, particularly in the tails. The presence of numerous points far from the line at both extremes indicates **outliers** and **heavy tails**, suggesting a deviation from normality. Additionally, there is noticeable volatility around the central part of the plot, where the points are dense but still deviate from the line, reinforcing the conclusion that the normality assumption is not satisfied.
+
+To further investigate this, a **histogram** of the residuals is constructed and compared to the theoretical normal distribution curve.
+
+```{r}
+hist(resi1, breaks=20, freq=FALSE); curve(dnorm(x, mean=mean(resi1), sd=sd(resi1)), col=2,add=T)
+```
+
+The histogram confirms the previous findings. Although the general shape is roughly symmetric, it is evident that the empirical distribution does not perfectly match the theoretical normal curve. Outliers are again detected, and the residuals do not tightly follow the normal bell-shaped pattern, particularly at the extremes.
+
+Finally, to formally test the normality hypothesis, the **Shapiro-Wilk test** is conducted:
+
+```{r}
+shapiro.test(resi1)
+```
+
+The test yields a **p-value significantly smaller than 0.05**, leading to the rejection of the null hypothesis of normality at a 95% confidence level. Therefore, based on the combined evidence from the Q-Q plot, the histogram, and the Shapiro-Wilk test, it is concluded that the residuals **do not follow a normal distribution**.
+
+#### Independence
+
+The final assumption to verify in the residual analysis concerns **independence**, meaning that the residuals should not exhibit any autocorrelation structure and should behave as white noise.
+
+To investigate this, the **Autocorrelation Function (ACF)** and **Partial Autocorrelation Function (PACF)** of the residuals are plotted. Ideally, in the absence of autocorrelation, all points in the ACF and PACF plots should lie within the 95% confidence bounds, suggesting that the residuals are uncorrelated at all lags.
+
+```{r}
+acf(resi1, ylim = c(-1,1), lag.max = 6*12, lwd = 2, col = c(2,rep(1,11))) 
+pacf(resi1, ylim = c(-1,1), lag.max = 6*12, lwd = 2, col = c(rep(1,11), 2))
+```
+
+Upon visual inspection of the ACF and PACF plots, it is observed that although most of the lags fall within the confidence interval, a few lags are either very close to the boundary or slightly exceed it. While these small deviations are not conclusive by themselves, they raise suspicions regarding the complete independence of the residuals. In particular, the presence of several lags near the threshold suggests that some degree of autocorrelation might persist.
+
+To formally verify this, the **Ljung-Box test** is applied.
+
+```{r}
+tsdiag(mod1, gof.lag=72)
+```
+
+The Ljung-Box test evaluates whether groups of autocorrelations are jointly zero. In the resulting plot, the **p-values** for all lags up to lag 72 are systematically analyzed. It is clearly observed that almost all p-values are **below 0.05**, indicating that the null hypothesis of residual independence is rejected at the 5% significance level.
+
+Therefore, based on both the graphical analysis and the formal Ljung-Box test, it is concluded that the residuals **do not satisfy the independence assumption**. Some autocorrelation remains in the residuals, which may affect the adequacy of the model for forecasting purposes.
+
+To continue with this analysis, as we have done before, the residuals from the second model **ARIMA(0,1,1)(0,1,1)12**​, are extracted using the `resid()` function in R. A time plot of these residuals is generated.
+
+```{r}
+resi2 <- resid(mod2)
+plot(resi2); abline(h=0); abline(h=c(-3*sd(resi2),3*sd(resi2)), lty=3, col=4)
+```
+
+We now plot the square root of the absolute value of the residuals with a smooth fit.
+
+```{r}
+scatter.smooth(sqrt(abs(resi2)), lpars=list(col=2))
+```
+
+We now analyze the obtained results. In the residuals plot, we observe several outliers falling outside the confidence interval. Moreover, when examining the plot of the square root of the absolute value of the residuals, we do not obtain the desired result: a nearly horizontal red line. In fact, we notice a slight upward trend, particularly at the beginning of the plot. Based on this, we can conclude that the variance is not constant
+
+If we analyze the normality of the residuals, we can do so through a normality plot as well as by using the *Shapiro-Wilk test*.
+
+We will begin first with the graphical analysis.
+
+```{r}
+qqnorm(resi2); qqline(resi2, col=2, lwd=2)
+```
+
+We can clearly see that our residuals do not follow the red normality line. If we focus on the tails, we observe the presence of outliers—points that are very distant and sparsely distributed. Additionally, there is a certain degree of volatility, as indicated by clusters of points that deviate significantly from the normality line, especially in the central part of the distribution. This pattern suggests that the residuals do not conform well to a normal distribution, which may impact the reliability of statistical inference and confidence intervals based on this model.
+
+```{r}
+hist(resi2, breaks=20, freq=FALSE); curve(dnorm(x, mean=mean(resi2), sd=sd(resi2)), col=2,add=T)
+```
+
+Once again, we confirm the hypotheses suggested by the previous plot. Although less clearly than with the Q-Q plot, we still detect the presence of outliers, indicating that our residuals do not follow a normal distribution.
+
+Finally, we proceed to apply the Shapiro-Wilk test to the residuals.
+
+```{r}
+shapiro.test(resi2)
+```
+
+Analyzing the p-value obtained, we see that it is much smaller than 0.05. Therefore, based on all the points mentioned previously in this section and the results from the Shapiro-Wilk test, we can conclude that the residuals do not follow a normal distribution.
+
+Now, we move on to study the independence of our residuals. To do this, we will examine their ACF and PACF plots and apply the Ljung-Box test.
+
+```{r}
+acf(resi2, ylim = c(-1,1), lag.max = 6*12, lwd = 2, col = c(2,rep(1,11)))
+pacf(resi2, ylim = c(-1,1), lag.max = 6*12, lwd = 2, col = c(rep(1,11), 2))
+```
+
+If we analyze these plots, we see that although some lags are very close to the limit of the confidence interval, or even slightly exceed it, we cannot clearly detect non-independence in the residuals. Therefore, to resolve any doubts, we proceed to apply the Ljung-Box test.
+
+```{r}
+tsdiag(mod2, gof.lag=72)
+```
+
+If we analyze this plot, we can clearly see that all but the first two p-values of our test are below 0.05. Therefore, we can conclude that these residuals are **not independent.**
+
+### Include details on model expressions, such as infinite AR and MA representations, stationarity and invertibility conditions, and model fit metrics.
+
+#### Model expressions
+
+The two estimated models are expressed as follows:
+
+-   **Model 1**: ARIMA(0,1,1)(1,1,0)12\
+    The model structure can be written as: $$(1 - \Phi_1 B^{12})(1 - B)(1 - B^{12}) \ln(X_t) = (1 + \theta_1 B) Z_t
+    $$
+    -   $\theta_1$: regular MA(1) coefficient
+
+    -   $\Phi1$: seasonal AR(1) coefficient
+
+    -   $B$: backshift operator ($BX_t = X_{t-1}$)
+
+    -   $Z_t$: white noise
+
+Let's now give the infinite AR and MA representations:
+
+**MA:**$$
+X_t = \frac{(1 - 0.6429 B)}{(1 + 0.5107 B^{12})(1 - B)(1 - B^{12})} Z_t
+$$
+
+**AR:**
+
+$$
+Z_t = \frac{(1 + 0.5107 B^{12})(1 - B)(1 - B^{12})}{1 - 0.6429 B} X_t
+$$
+
+-   **Model 2:** ARIMA(0,1,1)(0,1,1)12​
+
+    The model structure can be written as:
+
+    $$(1-B)(1-B^{12}) \ln(X_t) = (1 + \theta_1 B)(1 + \Theta_1 B^{12}) Z_t$$
+
+    -   $\theta_1$: regular MA(1) coefficient
+
+    -   $\Theta_1$ seasonal MA(1) coefficient
+
+    -   $B$: backshift operator ($BX_t = X_{t-1}$)
+
+    -   $Z_t$: white noise
+
+**MA:**
+
+$$
+w_t = Z_t - 0.6555 Z_{t-1} - 0.7329 Z_{t-12} + 0.4805 Z_{t-13} + \cdots
+$$
+
+**AR:**
+
+$$
+Z_t = \frac{1}{(1 - 0.6555 B)(1 - 0.7329 B^{12})} w_t
+$$
+
+#### Stationarity and Invertibility Conditions
+
+-   **Stationarity**:\
+    Both models include **first-order regular differencing** and **first-order seasonal differencing**, which are necessary to induce stationarity in the series.\
+    The original series ln(Xt​) is non-stationary, but the differenced series is stationary based on visual and statistical diagnostics.
+
+> Applied regular differencing: $(1-B)$
+>
+> Applied seasonal differencing: $(1-B^{12})$
+
+Thus, the differenced series is stationary.
+
+-   **Invertibility**:\
+    Invertibility requires that the roots of the moving average polynomials lie outside the unit circle.\
+    The roots of the MA polynomials $(1 + \theta_1 B)$ and $(1 + \Theta_1 B^{12})$ must lie **outside** the unit circle (i.e., modulus greater than 1).
+
+Model 1:
+
+```{r}
+Mod(polyroot(c(1,-mod1$model$phi)))
+Mod(polyroot(c(1,mod1$model$theta)))
+```
+
+Model 2:
+
+```{r}
+Mod(polyroot(c(1,-mod2$model$phi)))
+Mod(polyroot(c(1,mod2$model$theta)))
+```
+
+As all of the roots of both models are greater than 1, we can say they are invertible.
+
+Thus, both models meet the necessary **stationarity** and **invertibility** conditions after differencing.
+
+#### Model fit metrics
+
+The goodness of fit for each model is evaluated using the **Akaike Information Criterion (AIC)** and the **Bayesian Information Criterion (BIC)**:
+
+AIC:
+
+```{r}
+AIC(mod1)
+AIC(mod2)
+```
+
+BIC:
+
+```{r}
+BIC(mod1)
+BIC(mod2)
+```
+
+As it has a lower value of AIC and BIC, we can say the second model has better fit metrics.
+
+### Check model stability and assess forecasting accuracy by reserving the last 12 observations for validation.
+
+#### Model stabililty
+
+To assess the **stability** of the fitted model, a comparative analysis is conducted. This analysis involves estimating the same model structure twice:
+
+-   Once using the full dataset.
+-   Once using a **truncated dataset**, excluding the last 12 observations.
+
+The idea is to verify whether the model's parameters remain consistent when slightly changing the estimation sample, which is a necessary condition for model stability and reliability in forecasting.
+
+Specifically, the coefficients obtained from the two models are compared by focusing on three key aspects:
+
+1.  Magnitude
+
+2.  Sign
+
+3.  Statistical significance
+
+This approach ensures that the model is not overfitted to specific fluctuations in the dataset and that it maintains a stable structure when forecasting future values.
+
+To implement this comparison, a new model is estimated using the truncated dataset, defined by removing the last 12 months of observations.
+
+```{r}
+ultim=c(2017,12);  
+serie_aj=window(serie, end=ultim)
+lnserie_aj = log(serie_aj)
+```
+
+We now compare this one with our models.
+
+```{r}
+(mod_aj1 <- arima(lnserie_aj, order=c(0,1,1), seasonal=list(order=c(1,1,0), period=12)))
+mod1
+```
+
+```{r}
+(mod_aj2 <- arima(lnserie_aj, order=c(0,1,1), seasonal=list(order=c(0,1,1), period=12)))
+mod2
+```
+
+After analyzing the results, it is observed that the coefficients remain consistent in all three aspects. The magnitude and sign of the parameters are preserved, and the coefficients continue to be statistically significant even when the last 12 observations are excluded from the estimation process.
+
+Therefore, it can be concluded that both models demonstrate **parameter stability**, confirming that the model structure is not overly sensitive to minor changes in the data sample. This strengthens the reliability of the models for forecasting purposes.
+
+#### Forecasting accuracy
+
+To assess the forecasting performance of the proposed models, the last 12 observations of the series are reserved as a **validation set**. The models are trained on the truncated dataset (excluding the last 12 months), and **forecasts** are generated for the validation period.\
+The goal is to compare the forecasted values to the real observations and evaluate the predictive capability of each model.
+
+The following procedure is followed:
+
+1.  The models are estimated using the training dataset (all observations except the last 12 months).
+
+2.  Forecasts are generated for the next 12 months.
+
+3.  The forecasted values are compared to the real observed values, and forecast errors are computed.
+
+The accuracy of the forecasts is quantified using several standard error metrics:
+
+-   **Mean Absolute Error (MAE)**: measures the average magnitude of the errors without considering their direction.$$\text{MAE} = \frac{1}{n} \sum_{t=1}^n |X_t - \hat{y}_t|$$
+
+-   **Root Mean Squared Error (RMSE)**: penalizes larger errors more heavily and is sensitive to large deviations.$$\text{RMSE} = \sqrt{ \frac{1}{n} \sum_{t=1}^n (X_t - \hat{y}_t)^2 }$$
+
+-   **Mean Absolute Percentage Error (MAPE)**: expresses the forecast errors as a percentage of the actual values, allowing for scale-independent interpretation.$$\text{MAPE} = \frac{100}{n} \sum_{t=1}^n \left| \frac{X_t - \hat{y}_t}{X_t} \right|$$
+
+The model with the **lower** values of MAE, RMSE, and MAPE will be considered **more accurate** for forecasting purposes.
+
+Let's calculate this measures for both models.
+
+```{r}
+predictions1 = predict(mod_aj1, n.ahead=12)
+pr1=exp(predictions1$pred)
+obs=window(serie,start=2018);
+cat("\nRMSE = ", RMSE_orig = sqrt(mean((obs-pr1)^2)))
+cat("\nMAE = ", MAE_orig = mean(abs(obs-pr1)))
+cat("\nMAPE = ", MAPE_orig = mean(abs(obs-pr1)/obs))
+```
+
+```{r}
+predictions2 = predict(mod_aj2, n.ahead=12)
+pr2=exp(predictions2$pred)
+obs=window(serie,start=2018);
+cat("\nRMSE = ", sqrt(mean((obs-pr2)^2)))
+cat("\nMAE = ", mean(abs(obs-pr2)))
+cat("\nMAPE = ", mean(abs(obs-pr2)/obs))
+```
+
+### Select the best model for forecasting.
+
+The final model selection is based on a comprehensive evaluation of several criteria, including:
+
+-   The model fit metrics, particularly the Akaike Information Criterion (AIC) and the Bayesian Information Criterion (BIC),
+
+-   The forecast accuracy measures (MAE, RMSE, MAPE) obtained from the reserved validation set,
+
+-   The results of the residual analysis and model stability assessment.
+
+Between the two candidate models, the model with lower AIC and BIC values is favored as it indicates a better balance between goodness of fit and parsimony.
+
+Additionally, the model demonstrating lower forecast error metrics on the validation set is considered more reliable for out-of-sample predictions.
+
+After analyzing the results, Model 2 (mod2) remains the preferred choice for forecasting, primarily due to its superior information criteria values. It has a significantly lower AIC (-326.2528) and BIC (-315.2743) compared to Model 1 (mod1), which indicates a better balance between model fit and complexity.
+
+However, when comparing forecasting accuracy metrics:
+
+Model 1 (mod1) performs better in terms of:
+
+RMSE: 22.54406 (vs. 25.27715 for mod2)
+
+MAE: 17.95891 (vs. 20.76572 for mod2)
+
+MAPE: 0.1032 (vs. 0.1249 for mod2)
+
+These lower error metrics suggest that mod1 provides more accurate point forecasts on the observed data.
+
+Despite this, we prioritize mod2 due to its lower AIC and BIC values, as these criteria assess the overall model quality, including parsimony and generalization capacity. Therefore, Model 2 is chosen for its stronger statistical foundation and expected robustness in out-of-sample forecasting
+
+## Forecasting
+
+### Generate long-term forecasts for the 12 months following the last recorded observation, including confidence intervals.
+
+In this task, we aim to generate 12-month ahead forecasts beyond the last recorded observation, including corresponding confidence intervals. The forecasts are based on **Model 2 (mod2)**, which has been selected as the most suitable model for prediction.
+
+```{r}
+par(mar = c(4, 2, 1.5, 1))
+future <- predict(mod2, n.ahead = 12)
+ll_future <- exp(future$pred - 1.96 * future$se)
+ul_future <- exp(future$pred + 1.96 * future$se)
+pr_future <- exp(future$pred)
+
+serie_extendida <- ts(c(serie, pr_future), start = start(serie), frequency = frequency(serie))
+
+ll_extendida <- ts(c(rep(NA, length(serie)), ll_future), start = start(serie), frequency = frequency(serie))
+ul_extendida <- ts(c(rep(NA, length(serie)), ul_future), start = start(serie), frequency = frequency(serie))
+
+ts.plot(serie_extendida, 
+        lty = 1, 
+        col = "black", 
+        type = "o",
+        xlim = c(2014, 2020),
+        ylim = range(c(serie, pr_future, ll_future, ul_future), na.rm = TRUE))
+
+lines(ts(pr_future, start = c(2019, 1), frequency = 12), 
+      col = "red", 
+      type = "o")
+
+lines(ll_extendida, lty = 2, col = "blue")
+lines(ul_extendida, lty = 2, col = "blue")
+
+abline(v = 2014:2020, lty = 3, col = 4)
+```
+
+We can see that the results obtained are quite good, as the prediction follows a pattern similar to the original series. The forecasted values align closely with the historical data, indicating that the model is capturing the underlying trends and behaviors effectively.
+
+## Calendar Effects
+
+Calendar effects refer to systematic variations in the data caused by differences in the number of working days across months. In the context of car production, these effects are particularly relevant in Spain due to recurring shutdowns in months like August and December. If not corrected, these variations can distort the analysis and lead to misleading conclusions. This section adjusts the series to account for these effects, ensuring that the model captures genuine trends and patterns.
+
+```{r}
+source("CalendarEffects.R")
+
+# Calendar regressors with initial full series (longer than needed)
+start = c(1994, 1, 300)
+vEa = Weaster(start) # Easter effect
+vTD = Wtrad(start) # Traditional calendar effects
+
+# Align regressors with lnseries time window
+vEa <- window(vEa, start = start(lnserie), end = end(lnserie))
+vTD <- window(vTD, start = start(lnserie), end = end(lnserie))
+
+(modEaTD=arima(lnserie, order=c(0,1,1),
+              seasonal=list(order=c(0,1,1),period=12),
+              xreg=data.frame(vEa,vTD)))
+
+(modEa=arima(lnserie, order=c(0,1,1),
+              seasonal=list(order=c(0,1,1),period=12),
+              xreg=data.frame(vEa)))
+
+(modTD=arima(lnserie, order=c(0,1,1),
+            seasonal=list(order=c(0,1,1),period=12),
+            xreg=data.frame(vTD)))
+```
+
+If we examine the coefficient values of vTD and vEa in the models modTD and modEa, we observe that both are statistically significant. This indicates that the calendar effects—specifically, those related to the number of working days (vTD) and Easter holidays (vEa)—have a real and measurable impact on the behavior of the series.
+
+```{r, include=FALSE}
+# Adjust the series by removing the effects of Easter and Traditional events
+lnserieEC = log(serie) - coef(modEaTD)["vEa"] * vEa - coef(modEaTD)["vTD"] * vTD
+
+# Exponentiate the original and adjusted series to compare
+exp(cbind(log(serie), lnserieEC))
+
+# Apply seasonal differencing on the adjusted series
+d1d12lnserieEC = diff(diff(lnserieEC, 12))
+```
+
+For this reason, we decide to adjust the original series by removing these calendar effects. This is done by estimating their influence through the coefficients obtained in the respective models, and then subtracting their contribution from the original log-transformed series. The result is a cleaner series, where variations due to calendar structure (such as shorter months or holiday periods) no longer interfere with the analysis.
+
+By doing this, we ensure that the remaining variation in the data more accurately reflects genuine economic or production-related dynamics, rather than artifacts introduced by the calendar. This step is crucial for building a reliable time series model and for interpreting results and forecasts without distortion.
+
+```{r}
+# Plot ACF and PACF for the differenced series
+par(mfrow = c(1, 2))
+acf(d1d12lnserieEC, ylim = c(-1, 1), lag.max = 72, col = c(2, rep(1, 11)), lwd = 2)
+pacf(d1d12lnserieEC, ylim = c(-1, 1), lag.max = 72, col = c(rep(1, 11), 2), lwd = 2)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+# Fit the ARIMA model on the adjusted series with calendar effects
+modEC = arima(log(serie), order = c(0, 1, 1),
+              seasonal = list(order = c(0, 1, 1), period = 12),
+              xreg = data.frame(vEa, vTD))
+```
+
+We finally do our model without the calendar effects. We now analyze the residuals of the adjusted model to assess improvements in independence, normality, and homoscedasticity compared to the original model. We also review key forecast accuracy metrics (MAE, MAPE, RMSE, AIC) to evaluate whether correcting for calendar effects and outliers has resulted in a more accurate and reliable model.
+
+```{r}
+# Check the residuals of the model
+resi = resid(modEC)
+
+# Plot residuals and check for outliers or patterns
+plot(resi)
+abline(h = 0)
+abline(h = c(-3 * sd(resi), 3 * sd(resi)), lty = 3, col = 4)
+```
+
+We first start studying the normality of our residuals.
+
+```{r}
+# Plot Q-Q plot and histogram of residuals
+qqnorm(resi)
+qqline(resi, col = 2, lwd = 2)
+
+hist(resi, breaks = 20, freq = FALSE)
+curve(dnorm(x, mean = mean(resi), sd = sd(resi)), col = 2, lwd = 2, add = TRUE)
+```
+
+If we examine the two plots—the Q-Q plot and the histogram of residuals—we can clearly see that the residuals do not follow a normal distribution. In the Q-Q plot, the points deviate noticeably from the reference line, indicating that the residuals do not align with what we would expect under normality. Similarly, the histogram does not resemble the shape of a normal bell curve, further confirming the lack of normality in the residuals. These visual indicators suggest that the assumption of normally distributed errors is not satisfied in this model. And it seems that it does not improve the orignial model.
+
+```{r}
+# Check autocorrelation and partial autocorrelation of residuals
+par(mfrow = c(1, 2))
+acf(resi, ylim = c(-1, 1), lag.max = 72, col = c(2, rep(1, 11)), lwd = 2)
+pacf(resi, ylim = c(-1, 1), lag.max = 72, col = c(rep(1, 11), 2), lwd = 2)
+par(mfrow = c(1, 1))
+```
+
+Now we are going to study the homocedasticity.
+
+```{r}
+scatter.smooth(sqrt(abs(resi)), lpars=list(col=2))
+```
+
+Once again, we find that our adjustment does not improve upon the previous model, as the plot clearly shows. In this case, we would expect to see a straight line, which would indicate homoscedasticity—that is, constant variance of the residuals over time. However, the result we obtain deviates significantly from this expectation, suggesting that the residuals still exhibit heteroscedasticity, and that the model has not fully captured the variance structure of the data.
+
+Finally we are going to see if the independence improves.
+
+```{r}
+# Diagnostic plots for the model
+tsdiag(modEC, gof.lag = 72)
+```
+
+We can observe that all the p-values in our test remain above the 5% threshold. This indicates that, after removing the calendar effects, we have successfully achieved independence in the residuals. In other words, there is no significant autocorrelation remaining, which confirms that the adjusted model better captures the time-dependent structure of the data and that the residuals behave more like white noise—one of the key assumptions for a well-specified time series model.
+
+```{r}
+# Check the model coefficients
+Mod(polyroot(c(1, -modEC$model$phi)))
+Mod(polyroot(c(1, modEC$model$theta)))
+```
+
+We can observe that the values of all the roots are greater than 1—specifically, twelve of them are equal to approximately 1.0336, and one stands out with a value of around 1.8212. This confirms that all roots lie outside the unit circle, which is a fundamental condition for invertibility in time series models. Invertibility ensures that the moving average (MA) component of the model is stable and that the model has a valid representation in terms of past observations. Therefore, we can conclude that our model satisfies the invertibility condition, contributing to the overall stability and reliability of the model for forecasting.
+
+```{r}
+# Calculate AIC and BIC for the model
+AIC2 = AIC(modEC)
+BIC2 = BIC(modEC)
+
+AIC2
+BIC2
+```
+
+We can see that we improve the values of the AIC and BIC of the orignial model with the calendar effects treatment.
+
+Finally we are going to forecast the observations without taking into account the calendar effects.
+
+```{r}
+# Set the last observation for forecasting
+ultim = c(2017, 12)
+serie2 = window(serie, end = ultim)
+lnserie2 = log(serie2)
+vEa2 = window(vEa, end = ultim)
+vTD2 = window(vTD, end = ultim)
+
+# Fit a model on the updated data
+modEC2 = arima(lnserie2, order = c(0, 1, 1),
+               seasonal = list(order = c(0, 1, 1), period = 12),
+               xreg = data.frame(vEa2, vTD2))
+
+# Create the calendar variables for the prediction period
+vEa2 = window(vEa, start = ultim + c(0, 1))
+vTD2 = window(vTD, start = ultim + c(0, 1))
+
+# Make forecasts for the next 12 months
+pre = predict(modEC2, n.ahead = 12, newxreg = data.frame(vEa2, vTD2))
+
+# Calculate confidence intervals for the forecast
+ll = exp(pre$pred - 1.96 * pre$se)
+pr = exp(pre$pred)
+ul = exp(pre$pred + 1.96 * pre$se)
+
+# Plot the original series and forecasted values with confidence intervals
+ts.plot(serie, ll, ul, pr,
+        lty = c(1, 2, 2, 1),
+        col = c(1, 4, 4, 2),
+        xlim = c(2014, 2019), type = "o")
+abline(v = 2014:2019, lty = 3, col = 4)
+```
+
+If we study the values of the performance metrics we can see that all of them improve, but not too significantlly.
+
+```{r}
+# Calculate forecast performance metrics
+obs = window(serie, start = 2018)
+RMSE2 = sqrt(mean((obs - pr)^2))
+MAE2 = mean(abs(obs - pr))
+RMSPE2 = sqrt(mean(((obs - pr) / obs)^2))
+MAPE2 = mean(abs(obs - pr) / obs)
+CI2 = mean(ul - ll)
+```
+
+```{r}
+# Output the metrics
+RMSE2
+MAE2
+RMSPE2
+MAPE2
+CI2
+```
+
+If we study the values of the performance metrics—specifically RMSE, MAE, RMSPE, MAPE, and the average confidence interval width—we can see that all of them show improvement compared to the original model, although the gains are not particularly large.
+
+For instance, the Root Mean Square Error (RMSE) is 28.60 and the Mean Absolute Error (MAE) is 23.06, indicating a modest reduction in absolute and squared prediction errors. Similarly, the RMSPE and MAPE, at 0.1682 and 0.1348 respectively, reflect a slight improvement in relative error performance. The average width of the confidence intervals, at 141.17, is narrower than before, suggesting a small gain in forecast precision.
+
+These results confirm that removing calendar effects and correcting for outliers leads to a better-performing model, but the improvement is incremental rather than transformative. Nonetheless, even moderate gains in forecast accuracy and reliability are valuable when working with real-world time series data.
+
+## Outlier Treatment
+
+### For the final selected model, apply automatic outlier detection and attempt to interpret the detected anomalies.
+
+```{r}
+source("atipics2.R")
+
+# Detect outliers in the adjusted log-transformed series
+mod_out_star <- outdetec(modEC, c(1, 12), crit = 2.9, LS = TRUE)
+
+# Extract and sort detected outliers
+outliers_star <- mod_out_star$atip[order(mod_out_star$atip[, 1]),]
+
+# Convert observation numbers to dates
+outlier_indices <- outliers_star[, 1]
+outlier_dates <- time(lnserieEC)[outlier_indices]
+
+# Add dates as a new column
+outliers_star_df <- as.data.frame(outliers_star)
+outliers_star_df$Date <- outlier_dates
+
+# View the outliers with dates
+print(outliers_star_df)
+```
+
+If we study the reason behind these outliers, we can see that there are some outliers we are able to identify. However, there are many others that we cannot. The transitory changes we find in both 2008 and 2009 are known to be due to the crisis experienced during those years. But for the rest, we have not been able to identify what caused them.
+
+```{r}
+# Linearize the series: remove the effect of outliers
+lnserieEC_lin <- lineal(lnserieEC, mod_out_star$atip)
+
+# Re-transform to original scale (optional for plot comparison)
+ser_star_lin <- exp(lnserieEC_lin)
+
+# Differencing to achieve stationarity (seasonal and then regular)
+d1d12_lnserieEC_lin <- diff(diff(lnserieEC_lin, 12))
+
+```
+
+We apply these commands to generate a new series that does not take into account either the calendar effects or the previously detected outliers. Afterwards, we generate the model that analyzes this new series without outliers or calendar effects.
+
+```{r}
+modEC_lin <- arima(lnserieEC_lin,
+                          order = c(0, 1, 1),
+                          seasonal = list(order = c(0, 1, 1), period = 12))
+```
+
+Now, just as we did with the series that ignored calendar effects, we will do the same with the series that does not take into account either the calendar effects or the outliers.
+
+First we start studing the homocedasticity of our residuals.
+
+```{r}
+# Residual plots
+resid_star_lin <- resid(modEC_lin)
+par(mfrow = c(1, 2))
+plot(resid_star_lin, main = "Residuals")
+scatter.smooth(sqrt(abs(resid_star_lin)), main = "√|Residuals|")
+```
+
+We can see that this metric continues to show no improvement. Despite the transformations and adjustments applied to the series, the issue persists. The assumption of homoscedasticity — that is, the presence of constant variance across the residuals or the series — is still not satisfied. This indicates that the variability in the data is not stable over time, which may affect the reliability of our model's estimates and inferences. Further analysis or alternative modeling approaches may be necessary to address this limitation.
+
+```{r}
+# Residual plots
+resid_star_lin <- resid(modEC_lin)
+
+# Normality
+qqnorm(resid_star_lin)
+qqline(resid_star_lin, col = 2)
+hist(resid_star_lin, breaks = 20, freq = FALSE)
+curve(dnorm(x, mean=mean(resid_star_lin), sd=sd(resid_star_lin)), col=2, add=TRUE)
+
+# Shapiro-Wilk
+shapiro.test(resid_star_lin)
+```
+
+If we study the normality of the residuals, we can see that they still do not follow a normal distribution. This is evident both from the visual inspection of the plots, where deviations from normality are still noticeable, and from the statistical results. Specifically, the p-value of the normality test remains below 0.05, which suggests that the null hypothesis of normality should be rejected. Therefore, we can conclude that our residuals continue to deviate significantly from a normal distribution, which could impact the validity of certain statistical inferences based on the model.
+
+Finally we are going to study the independence
+
+```{r}
+tsdiag(modEC_lin, gof.lag=72)
+```
+
+We can observe that the p-values obtained are even higher than those from the model that only ignores calendar effects. This indicates a stronger result in favor of the null hypothesis of independence. Therefore, we can conclude that the residuals from this model can indeed be considered independent. This is a positive outcome, as the assumption of residual independence is crucial for the validity of many statistical models and ensures that there is no autocorrelation affecting the results.
+
+If we now make a prediction of our series using this new series, we obtain the following results and metrics.
+
+```{r}
+# Set cutoff point
+end <- c(2017, 11)
+serie_cut_lin <- window(lnserieEC_lin, end = end)
+obs <- window(serie, start = 2018)  # original scale series
+
+# Refit on cut sample
+modEC_lin_cut <- arima(serie_cut_lin,
+                              order = c(0, 1, 1),
+                              seasonal = list(order = c(0, 1, 1), period = 12))
+```
+
+```{r}
+future_pred <- predict(modEC_lin, n.ahead = 12)
+
+# Re-transform back to original scale
+pr_star <- exp(future_pred$pred)
+ll_star <- exp(future_pred$pred - 1.96 * future_pred$se)
+ul_star <- exp(future_pred$pred + 1.96 * future_pred$se)
+
+# Plot
+ts.plot(serie, ll_star, ul_star, pr_star, lty = c(1, 2, 2, 1),
+        col = c(1, 4, 4, 2), type = "o",
+        xlim = c(2014, 2020))
+abline(v = 2014:2020, lty = 3, col = 4)
+
+```
+
+```{r}
+# Already done previously
+RMSE_orig = sqrt(mean((obs-pr1)^2))
+MAE_orig = mean(abs(obs-pr1))
+MAPE_orig = mean(abs(obs-pr1)/obs)
+```
+
+```{r}
+MAE_orig
+MAPE_orig
+RMSE_orig
+AIC_orig = AIC(mod2)
+AIC_orig
+```
+
+```{r}
+pred_adj <- predict(modEC_lin_cut, n.ahead = 12)
+fcst_adj <- exp(pred_adj$pred)
+
+errors_adj <- fcst_adj - obs
+MAE_adj <- mean(abs(errors_adj))
+MAPE_adj <- mean(abs(errors_adj / obs)) * 100
+RMSE_adj <- sqrt(mean(errors_adj^2))
+AIC_adj <- AIC(modEC_lin)
+```
+
+```{r}
+MAE_adj
+MAPE_adj
+RMSE_adj
+AIC_adj
+```
+
+```{r}
+comparison_metrics <- data.frame(
+  Metric = c("MAE", "MAPE", "RMSE", "AIC"),
+  Original_Model = c(MAE_orig, MAPE_orig, RMSE_orig, AIC_orig),
+  Adjusted_Model = c(MAE_adj, MAPE_adj, RMSE_adj, AIC_adj)
+)
+
+# Round and print
+comparison_metrics[] <- lapply(comparison_metrics, function(x) {
+  if (is.numeric(x)) round(x, 4) else x
+})
+library(knitr)
+kable(comparison_metrics, caption = "Comparison of Forecast Metrics: Original vs Adjusted Model")
+
+```
+
+We can observe that the results obtained from the adjusted model—one that no longer includes calendar effects or outliers—are significantly better than those of the original model. This improvement is reflected in all key performance metrics, such as lower error values and a better model fit. Therefore, we can confidently conclude that the forecasts will be more accurate and reliable when using the model that has been corrected for these phenomena. Removing calendar effects and anomalous events leads to a clearer understanding of the underlying pattern in the data, which translates into improved forecasting performance.
+
+# Conclusions and discussion
+
+This study applied the Box-Jenkins methodology to model and forecast the monthly production of passenger cars in Spain, using data provided by the Ministry of Industry, Energy and Tourism. The analysis followed a rigorous process including stationarity assessment, model identification, parameter estimation, residual diagnostics, and out-of-sample forecast evaluation. Several ARIMA models were proposed and evaluated, ultimately selecting the ARIMA(0,1,1)(0,1,1)12​ model as the most suitable for capturing both regular and seasonal dynamics in the series.
+
+Residual analysis confirmed the need to address heteroscedasticity, non-normality, and autocorrelation issues, which initially indicated that the model, although structurally sound, could benefit from further refinement. To improve model performance and interpretability, two additional adjustments were made: the treatment of **calendar effects** and the **correction of outliers**.
+
+The inclusion of external regressors to model calendar effects, such as the number of working days and the timing of Easter holidays, led to a modest improvement in forecast accuracy. Although the reduction in error metrics (RMSE, MAE, RMSPE, MAPE) and the average confidence interval width was not substantial, the adjusted model provided slightly more precise and reliable forecasts. This reinforces the importance of considering domain-specific calendar structures when modeling economic or industrial time series.
+
+The removal of **outliers** had a more pronounced impact. After adjusting the model to exclude anomalies and calendar influences, all key performance indicators improved significantly, suggesting that these elements were obscuring the true signal in the data. The refined model achieved both a better fit and more accurate forecasts, highlighting the value of careful preprocessing and anomaly detection in time series modeling.
+
+In summary, the methodology applied in this project demonstrates that robust time series forecasting requires not only the correct selection of model structure but also careful attention to external factors and irregular events. Even when improvements appear incremental, they can be meaningful in practical contexts—especially in industrial forecasting, where small gains in predictive accuracy can translate into better planning and resource allocation. The final model, corrected for both calendar and outlier effects, offers a more faithful representation of the underlying data-generating process and improves confidence in future projections.
+
+# References
+
+This report is based on the data analysis and statistical procedures taught in the course, without the use of additional external sources.
+
