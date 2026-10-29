@@ -61,11 +61,10 @@ The goal is to build a robust, interpretable model able to forecast the monthly 
 ├── TimeSeries.pdf                   # Rendered final report
 ├── turismos.dat                     # Dataset (monthly cars, read in the Rmd)
 ├── CalendarEffects.R                # Helper: trading-day and Easter regressors
-├── atipics2.R                       # Helper: automatic outlier detection
 └── README.md
 ```
 
-> ⚠️ `turismos.dat`, `CalendarEffects.R` and `atipics2.R` are loaded by the `.Rmd`. Make sure they are in the same folder (they were provided by the course) before knitting.
+> ⚠️ `turismos.dat` and `CalendarEffects.R` are loaded by the `.Rmd`. Make sure they are in the same folder (they were provided by the course) before knitting.
 
 ## ▶️ How to reproduce
 
