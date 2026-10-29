@@ -2,9 +2,6 @@
 
 Time series analysis and forecasting of monthly passenger car production in Spain using the **Box-Jenkins (ARIMA/SARIMA) methodology** in R.
 
-> Project for the *Time Series Analysis* course (AD) · Bachelor's in Data Science and Engineering (GCED) · Academic year 2024–2025
-> Authors: **Lucas Viner** and **Oriol Parent**
-
 ---
 
 ## 📌 Overview
